@@ -1,0 +1,429 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+
+// --- Types ---
+type Cause = {
+    id: string;
+    code: string;
+    name: string;
+    category: string;
+    description: string | null;
+    affectTRS: boolean;
+    isActive: boolean;
+};
+
+type PagedResponse = {
+    items: Cause[];
+    total: number;
+    page: number;
+    limit: number;
+};
+
+// --- API Helper ---
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+    const res = await fetch(`${API_URL}${path}`, {
+        ...init,
+        headers: {
+            'Content-Type': 'application/json',
+            ...(init?.headers ?? {}),
+        },
+    });
+
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`${res.status} ${res.statusText} - ${text}`);
+    }
+    return (await res.json()) as T;
+}
+
+// --- Icons (Inline SVGs) ---
+const Icons = {
+    Search: () => (
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+    ),
+    Refresh: () => (
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+    ),
+    Plus: () => (
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+    ),
+    Alert: () => (
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+    ),
+    Check: () => (
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    ),
+    Close: () => (
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    )
+};
+
+// --- Main Component ---
+export default function CausesClient() {
+    const [data, setData] = useState<PagedResponse | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [err, setErr] = useState<string | null>(null);
+
+    // Filters
+    const [search, setSearch] = useState('');
+    const [onlyActive, setOnlyActive] = useState(false); // "Include Inactive" logic inverted for "Only Active" usually, but UI says "Include Inactive"
+
+    // Modal State
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
+    // Form State
+    const [code, setCode] = useState('');
+    const [name, setName] = useState('');
+    const [category, setCategory] = useState('');
+    const [description, setDescription] = useState('');
+    const [affectTRS, setAffectTRS] = useState(true);
+    const [isActive, setIsActive] = useState(true);
+
+    // The UI checkbox says "Include Inactive", so if checked (true), we want ALL (isActive=undefined to backend?).
+    // Or if unchecked (false), we want ONLY active.
+    // Standard logic: "Include Inactive" unchecked = Active Only. Checked = All.
+    // Backend expects `isActive=true` for active, `isActive=false` for inactive. undefined = all?
+    // Let's assume sending nothing gets all. Sending `true` gets active.
+    const queryString = useMemo(() => {
+        const params = new URLSearchParams();
+        params.set('page', '1');
+        params.set('limit', '50');
+        if (search.trim()) params.set('search', search.trim());
+
+        // "Include Inactive" logic:
+        // If Checked (true) -> We want ALL -> Don't send `isActive`.
+        // If Unchecked (false) -> We want ONLY Active -> Send `isActive=true`.
+        if (!onlyActive) {
+            params.set('isActive', 'true');
+        }
+        // (If `onlyActive` is true, we verify "Include Inactive" matches user intent. 
+        // Wait, variable name `onlyActive` is confusing. Let's start with `includeInactive`.
+        // Re-mapped below: `includeInactive` state.)
+
+        return params.toString();
+    }, [search, onlyActive]);
+
+    // Renaming for clarity in code (visual only)
+    const includeInactive = onlyActive;
+    const setIncludeInactive = setOnlyActive;
+
+    async function load() {
+        console.log('Fetching with:', queryString);
+        setLoading(true);
+        setErr(null);
+        try {
+            const res = await apiFetch<PagedResponse>(`/api/causes?${queryString}`);
+            setData(res);
+        } catch (e: any) {
+            setErr(e?.message ?? 'Failed to load causes');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    useEffect(() => {
+        load();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [queryString]);
+
+    async function onCreate(e: React.FormEvent) {
+        e.preventDefault();
+        setErr(null);
+        try {
+            await apiFetch<Cause>('/api/causes', {
+                method: 'POST',
+                body: JSON.stringify({
+                    code,
+                    name,
+                    category,
+                    description: description || null,
+                    affectTRS,
+                    isActive,
+                }),
+            });
+
+            // Reset & Close
+            setCode('');
+            setName('');
+            setCategory('');
+            setDescription('');
+            setAffectTRS(true);
+            setIsActive(true);
+            setIsModalOpen(false);
+
+            await load();
+        } catch (e: any) {
+            setErr(e?.message ?? 'Create failed');
+        }
+    }
+
+    async function toggleActive(c: Cause) {
+        try {
+            await apiFetch<Cause>(`/api/causes/${c.id}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ isActive: !c.isActive }),
+            });
+            await load(); // Reload to reflect state or remove from list if filter active
+        } catch (e: any) {
+            setErr(e?.message ?? 'Update failed');
+        }
+    }
+
+    return (
+        <div className="text-sm">
+            {/* Top Tabs (Visual Only for now) */}
+            <div className="flex justify-center mb-6">
+                <div className="bg-slate-800/50 p-1 rounded-full flex gap-1">
+                    <Link href="/stops" className="px-4 py-1.5 text-slate-400 hover:text-white rounded-full transition">Stops & Analytics</Link>
+                    <Link href="/" className="px-6 py-1.5 bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 rounded-full font-medium">Downtime Causes</Link>
+                    <Link href="/metrage" className="px-4 py-1.5 text-slate-400 hover:text-white rounded-full transition">
+                        Métrage
+                    </Link>
+
+                    <Link href="/vitesse" className="px-4 py-1.5 text-slate-400 hover:text-white rounded-full transition">
+                        Vitesse
+                    </Link>
+                </div>
+            </div>
+
+            {/* Main Card */}
+            <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl overflow-hidden shadow-2xl">
+
+                {/* Header Action Bar */}
+                <div className="flex flex-col md:flex-row justify-between items-center p-5 border-b border-slate-700/50 gap-4">
+
+                    {/* Left: Add Button & Checkbox */}
+                    <div className="flex items-center gap-6 w-full md:w-auto">
+                        <button
+                            onClick={() => setIsModalOpen(true)}
+                            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl font-medium shadow-lg shadow-indigo-600/20 transition-all hover:scale-105 active:scale-95"
+                        >
+                            <Icons.Plus /> New Cause
+                        </button>
+
+                        <label className="flex items-center gap-2 text-slate-300 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={includeInactive}
+                                onChange={(e) => setIncludeInactive(e.target.checked)}
+                                className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900"
+                            />
+                            Include Inactive
+                        </label>
+                    </div>
+
+                    {/* Right: Search, Refresh, Count */}
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                        <div className="relative group flex-1 md:w-64">
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors">
+                                <Icons.Search />
+                            </div>
+                            <input
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                placeholder="Search causes..."
+                                className="w-full bg-slate-800/50 border border-slate-700 text-slate-200 pl-10 pr-4 py-2 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-600"
+                            />
+                        </div>
+
+                        <button
+                            onClick={load}
+                            disabled={loading}
+                            className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-all"
+                            title="Refresh"
+                        >
+                            <Icons.Refresh />
+                        </button>
+
+                        <div className="text-slate-500 font-medium whitespace-nowrap px-2">
+                            Total: <span className="text-slate-200">{data?.total ?? 0}</span> causes
+                        </div>
+                    </div>
+                </div>
+
+                {/* Error Message */}
+                {err && (
+                    <div className="bg-red-500/10 border-l-4 border-red-500 p-4 m-4 text-red-400">
+                        <strong>Error:</strong> {err}
+                    </div>
+                )}
+
+                {/* Table Content */}
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-700/50 bg-slate-800/30">
+                                <th className="px-6 py-4">Code</th>
+                                <th className="px-6 py-4 w-1/3">Reason</th>
+                                <th className="px-6 py-4">Category</th>
+                                <th className="px-6 py-4">Affect TRS</th>
+                                <th className="px-6 py-4">Status</th>
+                                <th className="px-6 py-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-700/50">
+                            {loading && !data && (
+                                <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-500">Loading...</td></tr>
+                            )}
+
+                            {!loading && data?.items.length === 0 && (
+                                <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-500">No causes found.</td></tr>
+                            )}
+
+                            {data?.items.map((cause) => (
+                                <tr key={cause.id} className="group hover:bg-slate-800/40 transition-colors">
+                                    <td className="px-6 py-4 font-mono text-slate-300 group-hover:text-white transition-colors">
+                                        {cause.code}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="font-semibold text-slate-200">{cause.name}</div>
+                                        {cause.description && (
+                                            <div className="text-xs text-slate-500 mt-0.5 max-w-xs truncate">{cause.description}</div>
+                                        )}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700 shadow-sm">
+                                            {cause.category}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        {cause.affectTRS ? (
+                                            <div className="flex items-center gap-2 text-amber-400 font-semibold text-xs">
+                                                <Icons.Alert /> YES
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
+                                                <Icons.Check /> NO
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        {cause.isActive ? (
+                                            <div className="flex items-center gap-2 text-emerald-400 text-xs font-medium">
+                                                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"></span>
+                                                Active
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-2 text-slate-500 text-xs font-medium">
+                                                <span className="w-2 h-2 rounded-full bg-slate-500"></span>
+                                                Inactive
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="px-6 py-4 text-right">
+                                        <button
+                                            onClick={() => toggleActive(cause)}
+                                            className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${cause.isActive
+                                                ? 'border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700 hover:border-slate-600'
+                                                : 'border-emerald-900/50 text-emerald-400 bg-emerald-900/20 hover:bg-emerald-900/40'
+                                                }`}
+                                        >
+                                            {cause.isActive ? "Deactivate" : "Activate"}
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Footer / Pagination (simplified) */}
+                {!loading && data && (
+                    <div className="px-6 py-4 border-t border-slate-700/50 flex justify-between items-center text-xs text-slate-500">
+                        <div>Showing {data.items.length} of {data.total} entries</div>
+                        {/* Pagination buttons could go here */}
+                    </div>
+                )}
+            </div>
+
+            {/* --- Modal --- */}
+            {isModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    {/* Backdrop */}
+                    <div
+                        className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+                        onClick={() => setIsModalOpen(false)}
+                    />
+
+                    {/* Modal Content */}
+                    <div className="relative bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="px-6 py-4 border-b border-slate-700 flex justify-between items-center bg-slate-800/50">
+                            <h3 className="text-lg font-semibold text-white">New Downtime Cause</h3>
+                            <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white p-1 rounded-full hover:bg-slate-700 transition">
+                                <Icons.Close />
+                            </button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto">
+                            <form id="createForm" onSubmit={onCreate} className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-medium text-slate-400">Code</label>
+                                        <input required maxLength={32} value={code} onChange={e => setCode(e.target.value)}
+                                            className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                                            placeholder="E.g. E001"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-medium text-slate-400">Category</label>
+                                        <input required maxLength={64} value={category} onChange={e => setCategory(e.target.value)}
+                                            className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                                            placeholder="Mechanical, Safety..."
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-medium text-slate-400">Name</label>
+                                    <input required maxLength={128} value={name} onChange={e => setName(e.target.value)}
+                                        className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                                        placeholder="Short name of the cause"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-medium text-slate-400">Description</label>
+                                    <textarea maxLength={255} value={description} onChange={e => setDescription(e.target.value)}
+                                        className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all h-20 resize-none"
+                                        placeholder="Detailed explanation..."
+                                    />
+                                </div>
+
+                                <div className="flex gap-6 pt-2">
+                                    <label className="flex items-center gap-2 cursor-pointer group">
+                                        <div className="relative flex items-center">
+                                            <input type="checkbox" checked={affectTRS} onChange={e => setAffectTRS(e.target.checked)} className="peer sr-only" />
+                                            <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                                        </div>
+                                        <span className="text-sm text-slate-300 group-hover:text-white">Affect TRS</span>
+                                    </label>
+
+                                    <label className="flex items-center gap-2 cursor-pointer group">
+                                        <div className="relative flex items-center">
+                                            <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)} className="peer sr-only" />
+                                            <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                                        </div>
+                                        <span className="text-sm text-slate-300 group-hover:text-white">Active</span>
+                                    </label>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-slate-700 bg-slate-800/50 flex justify-end gap-3">
+                            <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors">
+                                Cancel
+                            </button>
+                            <button form="createForm" type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-600/20 font-medium transition-transform active:scale-95">
+                                Create Cause
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
