@@ -11,6 +11,7 @@ import {
     Tooltip,
     ResponsiveContainer,
 } from 'recharts';
+import ExcelExportButton from '../components/ExcelExportButton';
 
 type DailyPoint = {
     day: string; // YYYY-MM-DD
@@ -49,8 +50,9 @@ function toLocalDateInputValue(d: Date) {
 }
 
 function formatDayFR(day: string) {
-    // "YYYY-MM-DD" -> "DD/MM"
-    const [y, m, d] = day.split('-');
+    if (!day) return '';
+    const datePart = day.split('T')[0];
+    const [y, m, d] = datePart.split('-');
     return `${d}/${m}`;
 }
 
@@ -90,7 +92,7 @@ export default function MetrageClient() {
             setDaily(dailyRes);
             setTotal(totalRes);
         } catch (e: any) {
-            setErr(e?.message ?? 'Failed to load metrage');
+            setErr(e?.message ?? 'Erreur lors du chargement du métrage');
         } finally {
             setLoading(false);
         }
@@ -107,7 +109,7 @@ export default function MetrageClient() {
 
         const metersNum = Number(meters);
         if (Number.isNaN(metersNum) || metersNum < 0) {
-            setErr('meters must be a number >= 0');
+            setErr('Meters doit être un nombre >= 0');
             return;
         }
 
@@ -126,34 +128,15 @@ export default function MetrageClient() {
             setNote('');
             await load();
         } catch (e: any) {
-            setErr(e?.message ?? 'Create failed');
+            setErr(e?.message ?? 'La création a échoué');
         }
     }
 
     return (
         <div className="text-sm">
-            {/* Top Tabs */}
-            <div className="flex justify-center mb-6">
-                <div className="bg-slate-800/50 p-1 rounded-full flex gap-1">
-                    <Link href="/stops" className="px-4 py-1.5 text-slate-400 hover:text-white rounded-full transition">
-                        Stops & Analytics
-                    </Link>
-                    <Link href="/" className="px-4 py-1.5 text-slate-400 hover:text-white rounded-full transition">
-                        Downtime Causes
-                    </Link>
-                    <Link href="/metrage" className="px-6 py-1.5 bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 rounded-full font-medium">
-                        Métrage
-                    </Link>
-                    <Link href="/vitesse" className="px-4 py-1.5 text-slate-400 hover:text-white rounded-full transition">
-                        Vitesse
-                    </Link>
-
-                </div>
-            </div>
-
             {err && (
-                <div className="bg-red-500/10 border-l-4 border-red-500 p-4 mb-4 text-red-400">
-                    <strong>Error:</strong> {err}
+                <div className="bg-red-500/10 border-l-4 border-red-500 p-4 mb-4 text-red-400 rounded-r-lg">
+                    <strong>Erreur:</strong> {err}
                 </div>
             )}
 
@@ -161,42 +144,50 @@ export default function MetrageClient() {
             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl overflow-hidden shadow-2xl mb-8 p-6">
                 <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-4">
                     <div>
-                        <h2 className="text-xl font-bold text-white">Métrage produit par jour</h2>
-                        <p className="text-slate-400 text-xs mt-1">Courbe journalière sur la période sélectionnée</p>
+                        <h2 className="text-lg font-bold text-white">Métrage produit par jour</h2>
+                        <p className="text-xs text-slate-400 mt-1">Courbe journalière sur la période sélectionnée</p>
                     </div>
 
                     <div className="flex gap-3 items-end flex-wrap">
-                        <label className="text-slate-300 text-xs">
-                            From
+                        <label className="text-slate-400 text-[11px] uppercase tracking-wide font-semibold">
+                            Début
                             <input
                                 type="date"
                                 value={from}
                                 onChange={(e) => setFrom(e.target.value)}
-                                className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-xl"
+                                className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs focus:outline-none focus:border-indigo-500 dark:[color-scheme:dark]"
                             />
                         </label>
 
-                        <label className="text-slate-300 text-xs">
-                            To
+                        <label className="text-slate-400 text-[11px] uppercase tracking-wide font-semibold">
+                            Fin
                             <input
                                 type="date"
                                 value={to}
                                 onChange={(e) => setTo(e.target.value)}
-                                className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-xl"
+                                className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs focus:outline-none focus:border-indigo-500 dark:[color-scheme:dark]"
                             />
                         </label>
 
                         <button
                             onClick={load}
                             disabled={loading}
-                            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 transition"
+                            className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition uppercase text-xs font-medium tracking-wide h-[34px]"
                         >
-                            Refresh
+                            Actualiser
                         </button>
 
-                        <div className="bg-slate-800/40 border border-slate-700 rounded-xl px-4 py-2">
-                            <div className="text-slate-400 text-xs">Total période</div>
-                            <div className="text-white font-bold text-lg">
+                        <ExcelExportButton
+                            data={daily}
+                            fileName="metrage_journalier_export"
+                            sheetName="Métrage"
+                            label="Export"
+                        />
+
+
+                        <div className="bg-slate-800/40 border border-slate-700 rounded-lg px-4 py-1.5 min-w-[100px]">
+                            <div className="text-indigo-300 text-[10px] uppercase font-bold tracking-wider">Total Période</div>
+                            <div className="text-white font-bold text-lg leading-tight">
                                 {total ? `${total.totalMeters.toFixed(3)} m` : '—'}
                             </div>
                         </div>
@@ -232,21 +223,21 @@ export default function MetrageClient() {
                                         fontSize: '12px',
                                     }}
                                     formatter={(value: any) => [`${Number(value).toFixed(3)} m`, 'Métrage']}
-                                    labelFormatter={(label: any) => `Jour: ${label}`}
+                                    labelFormatter={(label: any) => `Jour: ${formatDayFR(label)}`}
                                 />
                                 <Line
                                     type="monotone"
                                     dataKey="totalMeters"
                                     stroke="#6366f1"
                                     strokeWidth={3}
-                                    dot={{ r: 3 }}
-                                    activeDot={{ r: 5 }}
+                                    dot={{ r: 3, fill: '#6366f1', strokeWidth: 0 }}
+                                    activeDot={{ r: 6, fill: '#818cf8', strokeWidth: 0 }}
                                 />
                             </LineChart>
                         </ResponsiveContainer>
                     ) : (
-                        <div className="h-full flex items-center justify-center text-slate-500 italic">
-                            {loading ? 'Loading...' : 'Aucune donnée sur la période.'}
+                        <div className="h-full flex items-center justify-center text-slate-500 italic text-xs">
+                            {loading ? 'Chargement...' : 'Aucune donnée sur la période.'}
                         </div>
                     )}
                 </div>
@@ -254,49 +245,48 @@ export default function MetrageClient() {
 
             {/* Manual insert */}
             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl overflow-hidden shadow-2xl p-6">
-                <h2 className="text-xl font-bold text-white">Ajouter une entrée (manuel)</h2>
+                <h2 className="text-lg font-bold text-white mb-4">Ajouter une entrée (manuel)</h2>
 
-                <form onSubmit={onCreate} className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4">
-                    <label className="text-slate-300 text-xs">
-                        Recorded at (optionnel)
+                <form onSubmit={onCreate} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <label className="text-slate-400 text-xs font-semibold uppercase tracking-wide">
+                        Date/Heure (Optionnel)
                         <input
                             type="datetime-local"
                             value={recordedAt}
                             onChange={(e) => setRecordedAt(e.target.value)}
-                            className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-xl"
+                            className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:border-indigo-500 dark:[color-scheme:dark]"
                         />
                     </label>
 
-                    <label className="text-slate-300 text-xs">
-                        Meters
+                    <label className="text-slate-400 text-xs font-semibold uppercase tracking-wide">
+                        Mètres
                         <input
                             type="number"
                             step="0.001"
                             min="0"
                             value={meters}
                             onChange={(e) => setMeters(e.target.value)}
-                            className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-xl"
+                            className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:border-indigo-500"
                         />
                     </label>
 
-                    <label className="text-slate-300 text-xs md:col-span-2">
-                        Note (optionnel)
-                        <input
-                            value={note}
-                            onChange={(e) => setNote(e.target.value)}
-                            className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-xl"
-                            placeholder="ex: batch A, test..."
-                        />
+                    <label className="text-slate-400 text-xs font-semibold uppercase tracking-wide md:col-span-2">
+                        Note (Optionnel)
+                        <div className="flex gap-2 mt-1">
+                            <input
+                                value={note}
+                                onChange={(e) => setNote(e.target.value)}
+                                className="w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:border-indigo-500"
+                                placeholder="ex: Essai 1..."
+                            />
+                            <button
+                                type="submit"
+                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-600/20 font-bold uppercase tracking-wide text-xs transition-transform active:scale-95 whitespace-nowrap"
+                            >
+                                Ajouter
+                            </button>
+                        </div>
                     </label>
-
-                    <div className="md:col-span-4">
-                        <button
-                            type="submit"
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-600/20 font-medium transition-transform active:scale-95"
-                        >
-                            Add entry
-                        </button>
-                    </div>
                 </form>
             </div>
         </div>

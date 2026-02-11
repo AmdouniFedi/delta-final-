@@ -48,8 +48,9 @@ export class VitesseService {
         const qb = this.repo
             .createQueryBuilder('v')
             .orderBy('v.recordedAt', 'DESC')
-            .take(limit)
-            .skip((page - 1) * limit);
+            .addOrderBy('v.id', 'DESC')
+            .limit(limit)
+            .offset((page - 1) * limit);
 
         this.applyRange(qb, query);
 
@@ -60,7 +61,7 @@ export class VitesseService {
     async getDailySeries(query: VitesseRangeQueryDto) {
         const qb = this.repo
             .createQueryBuilder('v')
-            .select('DATE(v.recordedAt)', 'day')
+            .select('CAST(DATE(v.recordedAt) AS CHAR)', 'day')
             .addSelect('ROUND(AVG(v.speed), 3)', 'avgSpeed')
             .addSelect('ROUND(MAX(v.speed), 3)', 'maxSpeed')
             .addSelect('COUNT(*)', 'samples')

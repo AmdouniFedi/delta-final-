@@ -1,5 +1,6 @@
 // stop.entity.ts
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Cause } from '../causes/cause.entity';
 
 @Entity({ name: 'stops' })
 @Index('idx_stops_start_time', ['startTime'])
@@ -22,4 +23,8 @@ export class StopEntity {
     // NEW:
     @Column({ name: 'equipe', type: 'tinyint', insert: false, update: false })
     equipe!: number;
+
+    @ManyToOne(() => Cause, { eager: false })
+    @JoinColumn({ name: 'cause_code', referencedColumnName: 'code' })
+    cause?: Cause;
 }

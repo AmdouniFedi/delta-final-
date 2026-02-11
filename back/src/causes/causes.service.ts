@@ -35,48 +35,33 @@ export class CausesService {
 
     async findAll(query: ListCausesQueryDto) {
         const page = Number(query.page) || 1;
-        const limit = Number(query.limit) || 50;
+        const limit = Number(query.limit) || 1000; // Increased default to show all as requested
 
-        const where: any = {};
-        if (query.category) where.category = query.category;
+        const qb = this.repo.createQueryBuilder('c');
+
+        if (query.category) {
+            qb.andWhere('c.category = :category', { category: query.category });
+        }
 
         if (query.isActive !== undefined) {
-            const val = String(query.isActive).toLowerCase();
-            if (val === 'true' || val === '1') {
-                where.isActive = true;
-            } else if (val === 'false' || val === '0') {
-                where.isActive = false;
-            }
+            qb.andWhere('c.isActive = :isActive', { isActive: query.isActive });
         }
 
         if (query.affectTRS !== undefined) {
-            const val = String(query.affectTRS).toLowerCase();
-            if (val === 'true' || val === '1') where.affectTRS = true;
-            else if (val === 'false' || val === '0') where.affectTRS = false;
+            qb.andWhere('c.affectTRS = :affectTRS', { affectTRS: query.affectTRS });
         }
-
-        let items: Cause[];
-        let total: number;
 
         if (query.search?.trim()) {
             const s = `%${query.search.trim()}%`;
-            [items, total] = await this.repo.findAndCount({
-                where: [
-                    { ...where, code: Like(s) },
-                    { ...where, name: Like(s) },
-                ],
-                order: { code: 'ASC' },
-                take: limit,
-                skip: (page - 1) * limit,
-            });
-        } else {
-            [items, total] = await this.repo.findAndCount({
-                where,
-                order: { code: 'ASC' },
-                take: limit,
-                skip: (page - 1) * limit,
-            });
+            qb.andWhere('(c.code LIKE :s OR c.name LIKE :s)', { s });
         }
+
+        qb.orderBy('c.code', 'ASC')
+            .addOrderBy('c.id', 'ASC')
+            .take(limit)
+            .skip((page - 1) * limit);
+
+        const [items, total] = await qb.getManyAndCount();
 
         return { items, total, page, limit };
     }

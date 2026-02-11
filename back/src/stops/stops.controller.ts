@@ -1,3 +1,4 @@
+// stops.controller.ts
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { StopsService } from './stops.service';
 import { CreateStopDto } from './dto/create-stop.dto';
@@ -13,6 +14,18 @@ export class StopsController {
         return this.stopsService.findAll(query);
     }
 
+    // ✅ downtime par cause (existant)
+    @Get('analytics/downtime')
+    getDowntimeAnalytics(@Query() query: ListStopsQueryDto) {
+        return this.stopsService.getDowntimeAnalytics(query);
+    }
+
+    // ✅ NOUVEAU: tableau arrêts par jour
+    @Get('analytics/daily')
+    getDailyStops(@Query() query: ListStopsQueryDto) {
+        return this.stopsService.getDailyStopsSummary(query);
+    }
+
     @Post()
     create(@Body() dto: CreateStopDto) {
         return this.stopsService.create(dto);
@@ -26,11 +39,5 @@ export class StopsController {
     @Patch(':id')
     update(@Param('id') id: string, @Body() dto: UpdateStopDto) {
         return this.stopsService.update(id, dto);
-    }
-
-    @Get('analytics/downtime')
-    getAnalytics(@Query('equipe') equipe?: string) {
-        const eq = equipe && equipe !== 'all' ? Number(equipe) : undefined;
-        return this.stopsService.getDowntimeAnalytics(eq);
     }
 }

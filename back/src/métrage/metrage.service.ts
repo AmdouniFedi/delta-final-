@@ -45,7 +45,7 @@ export class MetrageService {
     async getDailySeries(query: MetrageRangeQueryDto) {
         const qb = this.repo
             .createQueryBuilder('m')
-            .select('DATE(m.recordedAt)', 'day')
+            .select('CAST(DATE(m.recordedAt) AS CHAR)', 'day')
             .addSelect('ROUND(SUM(m.meters), 3)', 'totalMeters')
             .groupBy('day')
             .orderBy('day', 'ASC');

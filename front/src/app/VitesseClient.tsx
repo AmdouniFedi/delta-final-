@@ -11,6 +11,7 @@ import {
     Tooltip,
     ResponsiveContainer,
 } from 'recharts';
+import ExcelExportButton from '../components/ExcelExportButton';
 
 type DailyPoint = {
     day: string;      // YYYY-MM-DD
@@ -65,7 +66,9 @@ function toLocalDate(d: Date) {
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 function formatDayFR(day: string) {
-    const [y, m, d] = day.split('-');
+    if (!day) return '';
+    const datePart = day.split('T')[0];
+    const [y, m, d] = datePart.split('-');
     return `${d}/${m}`;
 }
 function formatDateTime(dateStr: string) {
@@ -96,6 +99,9 @@ export default function VitesseClient() {
     const [loading, setLoading] = useState(false);
     const [err, setErr] = useState<string | null>(null);
 
+    const [page, setPage] = useState(1);
+    const LIMIT = 5;
+
     const queryString = useMemo(() => {
         const params = new URLSearchParams();
         if (from) params.set('from', from);
@@ -110,13 +116,13 @@ export default function VitesseClient() {
             const [dailyRes, summaryRes, listRes] = await Promise.all([
                 apiFetch<DailyPoint[]>(`/api/vitesse/daily?${queryString}`),
                 apiFetch<Summary>(`/api/vitesse/summary?${queryString}`),
-                apiFetch<PagedResponse>(`/api/vitesse?${queryString}&page=1&limit=50`),
+                apiFetch<PagedResponse>(`/api/vitesse?${queryString}&page=${page}&limit=${LIMIT}`),
             ]);
             setDaily(dailyRes);
             setSummary(summaryRes);
             setList(listRes);
         } catch (e: any) {
-            setErr(e?.message ?? 'Failed to load vitesse');
+            setErr(e?.message ?? 'Erreur lors du chargement des vitesses');
         } finally {
             setLoading(false);
         }
@@ -125,6 +131,11 @@ export default function VitesseClient() {
     useEffect(() => {
         load();
         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [queryString, page]); // Reload when query or page changes
+
+    // Reset page when filters change
+    useEffect(() => {
+        setPage(1);
     }, [queryString]);
 
     async function onCreate(e: React.FormEvent) {
@@ -133,7 +144,7 @@ export default function VitesseClient() {
 
         const speedNum = Number(speed);
         if (Number.isNaN(speedNum) || speedNum < 0) {
-            setErr('speed must be a number >= 0');
+            setErr('La vitesse doit être un nombre >= 0');
             return;
         }
 
@@ -152,33 +163,15 @@ export default function VitesseClient() {
             setNote('');
             await load();
         } catch (e: any) {
-            setErr(e?.message ?? 'Create failed');
+            setErr(e?.message ?? 'La création a échoué');
         }
     }
 
     return (
         <div className="text-sm">
-            {/* Top Tabs */}
-            <div className="flex justify-center mb-6">
-                <div className="bg-slate-800/50 p-1 rounded-full flex gap-1">
-                    <Link href="/stops" className="px-4 py-1.5 text-slate-400 hover:text-white rounded-full transition">
-                        Stops & Analytics
-                    </Link>
-                    <Link href="/" className="px-4 py-1.5 text-slate-400 hover:text-white rounded-full transition">
-                        Downtime Causes
-                    </Link>
-                    <Link href="/metrage" className="px-4 py-1.5 text-slate-400 hover:text-white rounded-full transition">
-                        Métrage
-                    </Link>
-                    <Link href="/vitesse" className="px-6 py-1.5 bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 rounded-full font-medium">
-                        Vitesse
-                    </Link>
-                </div>
-            </div>
-
             {err && (
-                <div className="bg-red-500/10 border-l-4 border-red-500 p-4 mb-4 text-red-400">
-                    <strong>Error:</strong> {err}
+                <div className="bg-red-500/10 border-l-4 border-red-500 p-4 mb-4 text-red-400 rounded-r-lg">
+                    <strong>Erreur:</strong> {err}
                 </div>
             )}
 
@@ -186,57 +179,58 @@ export default function VitesseClient() {
             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl overflow-hidden shadow-2xl mb-8 p-6">
                 <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-4">
                     <div>
-                        <h2 className="text-xl font-bold text-white">Vitesse de production par jour</h2>
-                        <p className="text-slate-400 text-xs mt-1">Courbe journalière (AVG + MAX)</p>
+                        <h2 className="text-lg font-bold text-white">Vitesse de production par jour</h2>
+                        <p className="text-xs text-slate-400 mt-1">Courbe journalière (Moyenne + Max)</p>
                     </div>
 
                     <div className="flex gap-3 items-end flex-wrap">
-                        <label className="text-slate-300 text-xs">
-                            From
+                        <label className="text-slate-400 text-xs font-semibold uppercase tracking-wide">
+                            Début
                             <input
                                 type="date"
                                 value={from}
                                 onChange={(e) => setFrom(e.target.value)}
-                                className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-xl"
+                                className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs focus:outline-none focus:border-indigo-500 dark:[color-scheme:dark]"
                             />
                         </label>
 
-                        <label className="text-slate-300 text-xs">
-                            To
+                        <label className="text-slate-400 text-xs font-semibold uppercase tracking-wide">
+                            Fin
                             <input
                                 type="date"
                                 value={to}
                                 onChange={(e) => setTo(e.target.value)}
-                                className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-xl"
+                                className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs focus:outline-none focus:border-indigo-500 dark:[color-scheme:dark]"
                             />
                         </label>
 
                         <button
                             onClick={load}
                             disabled={loading}
-                            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 transition"
+                            className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition uppercase text-xs font-medium tracking-wide h-[34px]"
                         >
-                            Refresh
+                            Actualiser
                         </button>
 
-                        <div className="bg-slate-800/40 border border-slate-700 rounded-xl px-4 py-2">
-                            <div className="text-slate-400 text-xs">Avg speed</div>
-                            <div className="text-white font-bold text-lg">
-                                {summary ? `${summary.avgSpeed.toFixed(3)}` : '—'}
-                            </div>
-                        </div>
+                        <ExcelExportButton
+                            data={daily}
+                            fileName="vitesse_journaliere_export"
+                            sheetName="Vitesse"
+                            label="Export"
+                        />
 
-                        <div className="bg-slate-800/40 border border-slate-700 rounded-xl px-4 py-2">
-                            <div className="text-slate-400 text-xs">Max speed</div>
-                            <div className="text-white font-bold text-lg">
-                                {summary ? `${summary.maxSpeed.toFixed(3)}` : '—'}
+                        <div className="flex gap-2">
+                            <div className="bg-slate-800/40 border border-slate-700 rounded-lg px-3 py-1.5 min-w-[80px]">
+                                <div className="text-indigo-300 text-[10px] uppercase font-bold tracking-wider">Moyenne</div>
+                                <div className="text-white font-bold text-md leading-tight">
+                                    {summary ? `${summary.avgSpeed.toFixed(2)}` : '—'}
+                                </div>
                             </div>
-                        </div>
-
-                        <div className="bg-slate-800/40 border border-slate-700 rounded-xl px-4 py-2">
-                            <div className="text-slate-400 text-xs">Samples</div>
-                            <div className="text-white font-bold text-lg">
-                                {summary ? `${summary.samples}` : '—'}
+                            <div className="bg-slate-800/40 border border-slate-700 rounded-lg px-3 py-1.5 min-w-[80px]">
+                                <div className="text-emerald-400 text-[10px] uppercase font-bold tracking-wider">Max</div>
+                                <div className="text-white font-bold text-md leading-tight">
+                                    {summary ? `${summary.maxSpeed.toFixed(2)}` : '—'}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -269,20 +263,20 @@ export default function VitesseClient() {
                                         color: '#f8fafc',
                                         fontSize: '12px',
                                     }}
-                                    formatter={(value: any, name: any) => [Number(value).toFixed(3), name]}
-                                    labelFormatter={(label: any) => `Jour: ${label}`}
+                                    formatter={(value: any, name: any) => [Number(value).toFixed(2), name === 'avgSpeed' ? 'Moyenne' : 'Max']}
+                                    labelFormatter={(label: any) => `Jour: ${formatDayFR(label)}`}
                                 />
 
                                 {/* Avg line */}
-                                <Line type="monotone" dataKey="avgSpeed" stroke="#6366f1" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                                <Line type="monotone" dataKey="avgSpeed" name="avgSpeed" stroke="#6366f1" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
 
-                                {/* Max line (optionnel mais utile) */}
-                                <Line type="monotone" dataKey="maxSpeed" stroke="#22c55e" strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }} />
+                                {/* Max line */}
+                                <Line type="monotone" dataKey="maxSpeed" name="maxSpeed" stroke="#10b981" strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }} />
                             </LineChart>
                         </ResponsiveContainer>
                     ) : (
-                        <div className="h-full flex items-center justify-center text-slate-500 italic">
-                            {loading ? 'Loading...' : 'Aucune donnée sur la période.'}
+                        <div className="h-full flex items-center justify-center text-slate-500 italic text-xs">
+                            {loading ? 'Chargement...' : 'Aucune donnée sur la période.'}
                         </div>
                     )}
                 </div>
@@ -290,57 +284,56 @@ export default function VitesseClient() {
 
             {/* Manual Insert */}
             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl overflow-hidden shadow-2xl p-6 mb-8">
-                <h2 className="text-xl font-bold text-white">Ajouter un échantillon (manuel)</h2>
+                <h2 className="text-lg font-bold text-white mb-4">Ajouter un échantillon (manuel)</h2>
 
-                <form onSubmit={onCreate} className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4">
-                    <label className="text-slate-300 text-xs">
-                        Recorded at (optionnel)
+                <form onSubmit={onCreate} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <label className="text-slate-400 text-xs font-semibold uppercase tracking-wide">
+                        Date/Heure (Optionnel)
                         <input
                             type="datetime-local"
                             value={recordedAt}
                             onChange={(e) => setRecordedAt(e.target.value)}
-                            className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-xl"
+                            className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:border-indigo-500 dark:[color-scheme:dark]"
                         />
                     </label>
 
-                    <label className="text-slate-300 text-xs">
-                        Speed (ex: m/min)
+                    <label className="text-slate-400 text-xs font-semibold uppercase tracking-wide">
+                        Vitesse
                         <input
                             type="number"
                             step="0.001"
                             min="0"
                             value={speed}
                             onChange={(e) => setSpeed(e.target.value)}
-                            className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-xl"
+                            className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:border-indigo-500"
                         />
                     </label>
 
-                    <label className="text-slate-300 text-xs md:col-span-2">
-                        Note (optionnel)
-                        <input
-                            value={note}
-                            onChange={(e) => setNote(e.target.value)}
-                            className="mt-1 w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-xl"
-                            placeholder="ex: batch A, test..."
-                        />
+                    <label className="text-slate-400 text-xs font-semibold uppercase tracking-wide md:col-span-2">
+                        Note (Optionnel)
+                        <div className="flex gap-2 mt-1">
+                            <input
+                                value={note}
+                                onChange={(e) => setNote(e.target.value)}
+                                className="w-full bg-slate-800/50 border border-slate-700 text-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:border-indigo-500"
+                                placeholder="ex: Essai 1..."
+                            />
+                            <button
+                                type="submit"
+                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-600/20 font-bold uppercase tracking-wide text-xs transition-transform active:scale-95 whitespace-nowrap"
+                            >
+                                Ajouter
+                            </button>
+                        </div>
                     </label>
-
-                    <div className="md:col-span-4">
-                        <button
-                            type="submit"
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-600/20 font-medium transition-transform active:scale-95"
-                        >
-                            Add sample
-                        </button>
-                    </div>
                 </form>
             </div>
 
             {/* List */}
             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl overflow-hidden shadow-2xl">
                 <div className="flex justify-between items-center p-5 border-b border-slate-700/50">
-                    <h2 className="text-xl font-bold text-white">Derniers échantillons</h2>
-                    <div className="text-slate-500 font-medium whitespace-nowrap px-2">
+                    <h2 className="text-lg font-bold text-white">Derniers échantillons</h2>
+                    <div className="text-slate-500 font-medium whitespace-nowrap px-2 text-xs uppercase tracking-wide">
                         Total: <span className="text-slate-200">{list?.total ?? 0}</span>
                     </div>
                 </div>
@@ -348,17 +341,17 @@ export default function VitesseClient() {
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-700/50 bg-slate-800/30">
-                                <th className="px-6 py-4">Recorded At</th>
-                                <th className="px-6 py-4">Speed</th>
+                            <tr className="text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700/50 bg-slate-800/30">
+                                <th className="px-6 py-4">Enregistré le</th>
+                                <th className="px-6 py-4">Vitesse</th>
                                 <th className="px-6 py-4">Note</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-700/50">
+                        <tbody className="divide-y divide-slate-700/50 text-xs">
                             {!loading && list?.items.length === 0 && (
                                 <tr>
-                                    <td colSpan={3} className="px-6 py-12 text-center text-slate-500">
-                                        No vitesse entries found.
+                                    <td colSpan={3} className="px-6 py-8 text-center text-slate-500">
+                                        Aucune donnée trouvée.
                                     </td>
                                 </tr>
                             )}
@@ -381,8 +374,31 @@ export default function VitesseClient() {
                 </div>
 
                 {!loading && list && (
-                    <div className="px-6 py-4 border-t border-slate-700/50 flex justify-between items-center text-xs text-slate-500">
-                        <div>Showing {list.items.length} of {list.total} entries</div>
+                    <div className="px-6 py-4 border-t border-slate-700/50 flex justify-between items-center bg-slate-800/20">
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wide">
+                            Affichage de {list.items.length} sur {list.total} entrées
+                        </div>
+                        {list.total > LIMIT && (
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                                    disabled={page === 1}
+                                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 rounded border border-slate-700 text-xs"
+                                >
+                                    Précédent
+                                </button>
+                                <span className="text-xs text-slate-500 py-1">
+                                    Page {page} / {Math.ceil(list.total / LIMIT)}
+                                </span>
+                                <button
+                                    onClick={() => setPage(p => Math.min(Math.ceil(list.total / LIMIT), p + 1))}
+                                    disabled={page >= Math.ceil(list.total / LIMIT)}
+                                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 rounded border border-slate-700 text-xs"
+                                >
+                                    Suivant
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

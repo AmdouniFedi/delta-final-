@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import ExcelExportButton from '../components/ExcelExportButton';
 
 // --- Types ---
 type Cause = {
@@ -68,9 +69,8 @@ export default function CausesClient() {
     const [loading, setLoading] = useState(false);
     const [err, setErr] = useState<string | null>(null);
 
-    // Filters
     const [search, setSearch] = useState('');
-    const [onlyActive, setOnlyActive] = useState(false); // "Include Inactive" logic inverted for "Only Active" usually, but UI says "Include Inactive"
+    const [includeInactive, setIncludeInactive] = useState(false);
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -83,47 +83,31 @@ export default function CausesClient() {
     const [affectTRS, setAffectTRS] = useState(true);
     const [isActive, setIsActive] = useState(true);
 
-    // The UI checkbox says "Include Inactive", so if checked (true), we want ALL (isActive=undefined to backend?).
-    // Or if unchecked (false), we want ONLY active.
-    // Standard logic: "Include Inactive" unchecked = Active Only. Checked = All.
-    // Backend expects `isActive=true` for active, `isActive=false` for inactive. undefined = all?
-    // Let's assume sending nothing gets all. Sending `true` gets active.
     const queryString = useMemo(() => {
         const params = new URLSearchParams();
-        params.set('page', '1');
-        params.set('limit', '50');
         if (search.trim()) params.set('search', search.trim());
-
-        // "Include Inactive" logic:
-        // If Checked (true) -> We want ALL -> Don't send `isActive`.
-        // If Unchecked (false) -> We want ONLY Active -> Send `isActive=true`.
-        if (!onlyActive) {
+        if (!includeInactive) {
             params.set('isActive', 'true');
         }
-        // (If `onlyActive` is true, we verify "Include Inactive" matches user intent. 
-        // Wait, variable name `onlyActive` is confusing. Let's start with `includeInactive`.
-        // Re-mapped below: `includeInactive` state.)
-
         return params.toString();
-    }, [search, onlyActive]);
-
-    // Renaming for clarity in code (visual only)
-    const includeInactive = onlyActive;
-    const setIncludeInactive = setOnlyActive;
+    }, [search, includeInactive]);
 
     async function load() {
-        console.log('Fetching with:', queryString);
         setLoading(true);
         setErr(null);
         try {
             const res = await apiFetch<PagedResponse>(`/api/causes?${queryString}`);
             setData(res);
         } catch (e: any) {
-            setErr(e?.message ?? 'Failed to load causes');
+            setErr(e?.message ?? 'Erreur lors du chargement des causes');
         } finally {
             setLoading(false);
         }
     }
+
+    useEffect(() => {
+        // search or inactivity change resets UI if needed, but no page here
+    }, [search, includeInactive]);
 
     useEffect(() => {
         load();
@@ -157,7 +141,7 @@ export default function CausesClient() {
 
             await load();
         } catch (e: any) {
-            setErr(e?.message ?? 'Create failed');
+            setErr(e?.message ?? 'La création a échoué');
         }
     }
 
@@ -167,29 +151,14 @@ export default function CausesClient() {
                 method: 'PATCH',
                 body: JSON.stringify({ isActive: !c.isActive }),
             });
-            await load(); // Reload to reflect state or remove from list if filter active
+            await load();
         } catch (e: any) {
-            setErr(e?.message ?? 'Update failed');
+            setErr(e?.message ?? 'La mise à jour a échoué');
         }
     }
 
     return (
         <div className="text-sm">
-            {/* Top Tabs (Visual Only for now) */}
-            <div className="flex justify-center mb-6">
-                <div className="bg-slate-800/50 p-1 rounded-full flex gap-1">
-                    <Link href="/stops" className="px-4 py-1.5 text-slate-400 hover:text-white rounded-full transition">Stops & Analytics</Link>
-                    <Link href="/" className="px-6 py-1.5 bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 rounded-full font-medium">Downtime Causes</Link>
-                    <Link href="/metrage" className="px-4 py-1.5 text-slate-400 hover:text-white rounded-full transition">
-                        Métrage
-                    </Link>
-
-                    <Link href="/vitesse" className="px-4 py-1.5 text-slate-400 hover:text-white rounded-full transition">
-                        Vitesse
-                    </Link>
-                </div>
-            </div>
-
             {/* Main Card */}
             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl overflow-hidden shadow-2xl">
 
@@ -200,19 +169,19 @@ export default function CausesClient() {
                     <div className="flex items-center gap-6 w-full md:w-auto">
                         <button
                             onClick={() => setIsModalOpen(true)}
-                            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl font-medium shadow-lg shadow-indigo-600/20 transition-all hover:scale-105 active:scale-95"
+                            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl font-medium shadow-lg shadow-indigo-600/20 transition-all hover:scale-105 active:scale-95 text-xs uppercase tracking-wide"
                         >
-                            <Icons.Plus /> New Cause
+                            <Icons.Plus /> Nouvelle Cause
                         </button>
 
-                        <label className="flex items-center gap-2 text-slate-300 cursor-pointer select-none">
+                        <label className="flex items-center gap-2 text-slate-300 cursor-pointer select-none text-xs">
                             <input
                                 type="checkbox"
                                 checked={includeInactive}
                                 onChange={(e) => setIncludeInactive(e.target.checked)}
                                 className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900"
                             />
-                            Include Inactive
+                            Inclure Inactifs
                         </label>
                     </div>
 
@@ -225,8 +194,8 @@ export default function CausesClient() {
                             <input
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Search causes..."
-                                className="w-full bg-slate-800/50 border border-slate-700 text-slate-200 pl-10 pr-4 py-2 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-600"
+                                placeholder="Rechercher causes..."
+                                className="w-full bg-slate-800/50 border border-slate-700 text-slate-200 pl-10 pr-4 py-2 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-600 text-xs"
                             />
                         </div>
 
@@ -234,13 +203,20 @@ export default function CausesClient() {
                             onClick={load}
                             disabled={loading}
                             className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-all"
-                            title="Refresh"
+                            title="Actualiser"
                         >
                             <Icons.Refresh />
                         </button>
 
-                        <div className="text-slate-500 font-medium whitespace-nowrap px-2">
-                            Total: <span className="text-slate-200">{data?.total ?? 0}</span> causes
+                        <ExcelExportButton
+                            data={data?.items || []}
+                            fileName="causes_export"
+                            sheetName="Causes"
+                            label="Excel"
+                        />
+
+                        <div className="text-slate-500 font-medium whitespace-nowrap px-2 text-xs">
+                            Total: <span className="text-slate-200">{data?.total ?? 0}</span>
                         </div>
                     </div>
                 </div>
@@ -248,7 +224,7 @@ export default function CausesClient() {
                 {/* Error Message */}
                 {err && (
                     <div className="bg-red-500/10 border-l-4 border-red-500 p-4 m-4 text-red-400">
-                        <strong>Error:</strong> {err}
+                        <strong>Erreur:</strong> {err}
                     </div>
                 )}
 
@@ -256,73 +232,73 @@ export default function CausesClient() {
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-700/50 bg-slate-800/30">
+                            <tr className="text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700/50 bg-slate-800/30">
                                 <th className="px-6 py-4">Code</th>
-                                <th className="px-6 py-4 w-1/3">Reason</th>
-                                <th className="px-6 py-4">Category</th>
-                                <th className="px-6 py-4">Affect TRS</th>
-                                <th className="px-6 py-4">Status</th>
+                                <th className="px-6 py-4 w-1/3">Raison</th>
+                                <th className="px-6 py-4">Catégorie</th>
+                                <th className="px-6 py-4">Affecte TRS</th>
+                                <th className="px-6 py-4">Statut</th>
                                 <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-700/50">
+                        <tbody className="divide-y divide-slate-700/50 text-xs">
                             {loading && !data && (
-                                <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-500">Loading...</td></tr>
+                                <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">Chargement...</td></tr>
                             )}
 
                             {!loading && data?.items.length === 0 && (
-                                <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-500">No causes found.</td></tr>
+                                <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">Aucune cause trouvée.</td></tr>
                             )}
 
                             {data?.items.map((cause) => (
                                 <tr key={cause.id} className="group hover:bg-slate-800/40 transition-colors">
-                                    <td className="px-6 py-4 font-mono text-slate-300 group-hover:text-white transition-colors">
+                                    <td className="px-6 py-4 font-mono text-slate-300 group-hover:text-white transition-colors font-medium">
                                         {cause.code}
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="font-semibold text-slate-200">{cause.name}</div>
                                         {cause.description && (
-                                            <div className="text-xs text-slate-500 mt-0.5 max-w-xs truncate">{cause.description}</div>
+                                            <div className="text-[10px] text-slate-500 mt-0.5 max-w-xs truncate">{cause.description}</div>
                                         )}
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700 shadow-sm">
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700 shadow-sm">
                                             {cause.category}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4">
                                         {cause.affectTRS ? (
-                                            <div className="flex items-center gap-2 text-amber-400 font-semibold text-xs">
-                                                <Icons.Alert /> YES
+                                            <div className="flex items-center gap-2 text-amber-400 font-semibold text-[10px]">
+                                                <Icons.Alert /> OUI
                                             </div>
                                         ) : (
-                                            <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
-                                                <Icons.Check /> NO
+                                            <div className="flex items-center gap-2 text-emerald-400 font-semibold text-[10px]">
+                                                <Icons.Check /> NON
                                             </div>
                                         )}
                                     </td>
                                     <td className="px-6 py-4">
                                         {cause.isActive ? (
-                                            <div className="flex items-center gap-2 text-emerald-400 text-xs font-medium">
-                                                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"></span>
-                                                Active
+                                            <div className="flex items-center gap-2 text-emerald-400 text-[10px] font-medium">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"></span>
+                                                Actif
                                             </div>
                                         ) : (
-                                            <div className="flex items-center gap-2 text-slate-500 text-xs font-medium">
-                                                <span className="w-2 h-2 rounded-full bg-slate-500"></span>
-                                                Inactive
+                                            <div className="flex items-center gap-2 text-slate-500 text-[10px] font-medium">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                                                Inactif
                                             </div>
                                         )}
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <button
                                             onClick={() => toggleActive(cause)}
-                                            className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${cause.isActive
+                                            className={`text-[10px] px-3 py-1.5 rounded-lg border transition-all ${cause.isActive
                                                 ? 'border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700 hover:border-slate-600'
                                                 : 'border-emerald-900/50 text-emerald-400 bg-emerald-900/20 hover:bg-emerald-900/40'
                                                 }`}
                                         >
-                                            {cause.isActive ? "Deactivate" : "Activate"}
+                                            {cause.isActive ? "Désactiver" : "Activer"}
                                         </button>
                                     </td>
                                 </tr>
@@ -331,11 +307,12 @@ export default function CausesClient() {
                     </table>
                 </div>
 
-                {/* Footer / Pagination (simplified) */}
+                {/* Footer Count */}
                 {!loading && data && (
-                    <div className="px-6 py-4 border-t border-slate-700/50 flex justify-between items-center text-xs text-slate-500">
-                        <div>Showing {data.items.length} of {data.total} entries</div>
-                        {/* Pagination buttons could go here */}
+                    <div className="px-6 py-4 border-t border-slate-700/50 flex justify-between items-center bg-slate-800/20">
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wide">
+                            Affichage de {data.items.length} sur {data.total} entrées
+                        </div>
                     </div>
                 )}
             </div>
@@ -352,7 +329,7 @@ export default function CausesClient() {
                     {/* Modal Content */}
                     <div className="relative bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
                         <div className="px-6 py-4 border-b border-slate-700 flex justify-between items-center bg-slate-800/50">
-                            <h3 className="text-lg font-semibold text-white">New Downtime Cause</h3>
+                            <h3 className="text-lg font-semibold text-white">Nouvelle Cause</h3>
                             <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white p-1 rounded-full hover:bg-slate-700 transition">
                                 <Icons.Close />
                             </button>
@@ -364,32 +341,32 @@ export default function CausesClient() {
                                     <div className="space-y-1.5">
                                         <label className="text-xs font-medium text-slate-400">Code</label>
                                         <input required maxLength={32} value={code} onChange={e => setCode(e.target.value)}
-                                            className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
-                                            placeholder="E.g. E001"
+                                            className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-xs"
+                                            placeholder="Ex: E001"
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <label className="text-xs font-medium text-slate-400">Category</label>
+                                        <label className="text-xs font-medium text-slate-400">Catégorie</label>
                                         <input required maxLength={64} value={category} onChange={e => setCategory(e.target.value)}
-                                            className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
-                                            placeholder="Mechanical, Safety..."
+                                            className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-xs"
+                                            placeholder="Mécanique, Sécurité..."
                                         />
                                     </div>
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-medium text-slate-400">Name</label>
+                                    <label className="text-xs font-medium text-slate-400">Nom</label>
                                     <input required maxLength={128} value={name} onChange={e => setName(e.target.value)}
-                                        className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
-                                        placeholder="Short name of the cause"
+                                        className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-xs"
+                                        placeholder="Nom court de la cause"
                                     />
                                 </div>
 
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-medium text-slate-400">Description</label>
                                     <textarea maxLength={255} value={description} onChange={e => setDescription(e.target.value)}
-                                        className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all h-20 resize-none"
-                                        placeholder="Detailed explanation..."
+                                        className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all h-20 resize-none text-xs"
+                                        placeholder="Explication détaillée..."
                                     />
                                 </div>
 
@@ -399,7 +376,7 @@ export default function CausesClient() {
                                             <input type="checkbox" checked={affectTRS} onChange={e => setAffectTRS(e.target.checked)} className="peer sr-only" />
                                             <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
                                         </div>
-                                        <span className="text-sm text-slate-300 group-hover:text-white">Affect TRS</span>
+                                        <span className="text-sm text-slate-300 group-hover:text-white">Affecte TRS</span>
                                     </label>
 
                                     <label className="flex items-center gap-2 cursor-pointer group">
@@ -407,18 +384,18 @@ export default function CausesClient() {
                                             <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)} className="peer sr-only" />
                                             <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
                                         </div>
-                                        <span className="text-sm text-slate-300 group-hover:text-white">Active</span>
+                                        <span className="text-sm text-slate-300 group-hover:text-white">Actif</span>
                                     </label>
                                 </div>
                             </form>
                         </div>
 
                         <div className="px-6 py-4 border-t border-slate-700 bg-slate-800/50 flex justify-end gap-3">
-                            <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors">
-                                Cancel
+                            <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors text-xs uppercase font-medium">
+                                Annuler
                             </button>
-                            <button form="createForm" type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-600/20 font-medium transition-transform active:scale-95">
-                                Create Cause
+                            <button form="createForm" type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-600/20 font-medium transition-transform active:scale-95 text-xs uppercase tracking-wide">
+                                Créer Cause
                             </button>
                         </div>
                     </div>
