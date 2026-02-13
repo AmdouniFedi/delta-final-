@@ -6,6 +6,8 @@ import { StopsModule } from './stops/stops.module';
 import { MetrageModule } from './métrage/metrage.module';
 import { VitesseModule } from './vitesse/vitesse.module';
 
+
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -23,7 +25,16 @@ import { VitesseModule } from './vitesse/vitesse.module';
         autoLoadEntities: true,
         synchronize: false,
         logging: false,
+
+        // ✅ recommended for BIGINT ids + DATE columns
+        supportBigNumbers: true,
+        bigNumberStrings: true,
+
+        // ✅ avoid timezone shift on DATE columns like `Jour`
+        // keeps DATETIME as Date (vitesse/metrage) but returns DATE as string
+        dateStrings: ['DATE'],
       }),
+
     }),
 
     CausesModule,

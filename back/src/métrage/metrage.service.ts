@@ -24,10 +24,15 @@ export class MetrageService {
             throw new BadRequestException('meters must be >= 0');
         }
 
+        const note = dto.note?.trim() || null;
+        if (note && note.length > 40) {
+            throw new BadRequestException('note must be <= 40 characters');
+        }
+
         const entry = this.repo.create({
             recordedAt: dto.recordedAt ?? new Date(),
             meters: dto.meters,
-            note: dto.note?.trim() || null,
+            note,
         });
 
         return this.repo.save(entry);
@@ -55,7 +60,7 @@ export class MetrageService {
         const rows = await qb.getRawMany<{ day: string; totalMeters: string | number }>();
 
         return rows.map((r) => ({
-            day: r.day, // "YYYY-MM-DD"
+            day: r.day,
             totalMeters: Number(r.totalMeters ?? 0),
         }));
     }

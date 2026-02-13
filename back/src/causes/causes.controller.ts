@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Query, ParseIntPipe } from '@nestjs/common';
 import { CausesService } from './causes.service';
 import { CreateCauseDto } from './dto/create-cause.dto';
 import { UpdateCauseDto } from './dto/update-cause.dto';
@@ -19,12 +19,12 @@ export class CausesController {
     }
 
     @Get(':id')
-    findOne(@Param('id') id: string) {
+    findOne(@Param('id', ParseIntPipe) id: number) {
         return this.causesService.findOne(id);
     }
 
     @Patch(':id')
-    update(@Param('id') id: string, @Body() updateCauseDto: UpdateCauseDto) {
+    update(@Param('id', ParseIntPipe) id: number, @Body() updateCauseDto: UpdateCauseDto) {
         return this.causesService.update(id, updateCauseDto);
     }
 }

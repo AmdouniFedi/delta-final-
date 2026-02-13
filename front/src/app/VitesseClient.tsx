@@ -69,7 +69,7 @@ function formatDayFR(day: string) {
     if (!day) return '';
     const datePart = day.split('T')[0];
     const [y, m, d] = datePart.split('-');
-    return `${d}/${m}`;
+    return `${d}/${m}/${y}`;
 }
 function formatDateTime(dateStr: string) {
     const d = new Date(dateStr);
@@ -216,7 +216,7 @@ export default function VitesseClient() {
                             data={daily}
                             fileName="vitesse_journaliere_export"
                             sheetName="Vitesse"
-                            label="Export"
+                            label="Exporter excel"
                         />
 
                         <div className="flex gap-2">

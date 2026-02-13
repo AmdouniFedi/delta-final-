@@ -16,31 +16,21 @@ function toBool(value: any): boolean | undefined {
 export class CreateCauseDto {
     @IsString()
     @IsNotEmpty()
-    @MaxLength(32)
-    code!: string;
-
-    @IsString()
-    @IsNotEmpty()
-    @MaxLength(128)
+    @MaxLength(80)
     name!: string;
 
-    @IsString()
-    @IsNotEmpty()
-    @MaxLength(64)
-    category!: string;
-
     @IsOptional()
     @IsString()
-    @MaxLength(255)
+    @MaxLength(100)
     description?: string;
 
-    @IsOptional()
+    // Required (DB columns are NOT NULL and there are no DEFAULTs)
     @Transform(({ value }) => toBool(value))
     @IsBoolean()
-    affectTRS?: boolean;
+    affectTRS!: boolean;
 
-    @IsOptional()
+    // Required (DB columns are NOT NULL and there are no DEFAULTs)
     @Transform(({ value }) => toBool(value))
     @IsBoolean()
-    isActive?: boolean;
+    isActive!: boolean;
 }

@@ -53,7 +53,7 @@ function formatDayFR(day: string) {
     if (!day) return '';
     const datePart = day.split('T')[0];
     const [y, m, d] = datePart.split('-');
-    return `${d}/${m}`;
+    return `${d}/${m}/${y}`;
 }
 
 export default function MetrageClient() {
@@ -181,7 +181,7 @@ export default function MetrageClient() {
                             data={daily}
                             fileName="metrage_journalier_export"
                             sheetName="Métrage"
-                            label="Export"
+                            label="Exporter excel"
                         />
 
 

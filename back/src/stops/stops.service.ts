@@ -6,23 +6,27 @@ import { StopEntity } from './stop.entity';
 import { CreateStopDto } from './dto/create-stop.dto';
 import { ListStopsQueryDto } from './dto/list-stops.query.dto';
 import { UpdateStopDto } from './dto/update-stop.dto';
-const MICRO_STOP_MS = 30_000; // 30s strictement
-const NON_CONSIDERED_CAUSE_CODE = 'NC';
 
-function isMicroStop(startTime: Date, stopTime?: Date | null) {
-    if (!stopTime) return false;
-    return (stopTime.getTime() - startTime.getTime()) < MICRO_STOP_MS;
-}
-
-
-function startOfDay(date: string) {
-    return `${date} 00:00:00`;
-}
-function endOfDay(date: string) {
-    return `${date} 23:59:59`;
-}
+const MICRO_STOP_SECONDS = 30;      // < 30s => micro-stop
+const DEFAULT_CAUSE_ID = 1;         // default (for now)
+const NON_CONSIDERED_CAUSE_ID = 16; // Arrêt non considéré
 
 const SHIFT_SECONDS = 8 * 3600;
+
+function timeToSeconds(t: string): number {
+    // expects HH:mm:ss
+    const [hh, mm, ss] = t.split(':').map((x) => Number(x));
+    return hh * 3600 + mm * 60 + ss;
+}
+
+function diffTimeSeconds(start: string, end: string): number {
+    // supports crossing midnight: if end < start => +86400
+    const s = timeToSeconds(start);
+    const e = timeToSeconds(end);
+    let d = e - s;
+    if (d < 0) d += 86400;
+    return d;
+}
 
 @Injectable()
 export class StopsService {
@@ -34,34 +38,35 @@ export class StopsService {
         private readonly causeRepo: Repository<Cause>,
     ) { }
 
-    async create(dto: CreateStopDto) {
-        if (dto.stopTime && dto.stopTime < dto.startTime) {
-            throw new BadRequestException('stopTime must be >= startTime');
-        }
-
-        // ✅ règle micro-arrêt
-        const effectiveCauseCode =
-            isMicroStop(dto.startTime, dto.stopTime)
-                ? NON_CONSIDERED_CAUSE_CODE
-                : (dto.causeCode?.trim() || '');
-
-        // si pas micro-stop -> causeCode obligatoire
-        if (!isMicroStop(dto.startTime, dto.stopTime) && !effectiveCauseCode) {
-            throw new BadRequestException('causeCode is required for stops >= 30 seconds (or ongoing stops)');
-        }
-
-        // Vérifier que la cause existe (y compris "NC")
-        const cause = await this.causeRepo.findOne({ where: { code: effectiveCauseCode } });
+    private async assertCauseExists(causeId: number) {
+        const cause = await this.causeRepo.findOne({ where: { id: causeId } });
         if (!cause) {
             throw new BadRequestException(
-                `Unknown causeCode "${effectiveCauseCode}". Create it in causes first (e.g. code="NC").`,
+                `Unknown causeId "${causeId}". Insert it first in causes table.`,
             );
         }
+        return cause;
+    }
+
+    async create(dto: CreateStopDto) {
+        const stopTime = dto.stopTime ?? null;
+
+        const durationSec =
+            stopTime !== null ? diffTimeSeconds(dto.startTime, stopTime) : null;
+
+        const isMicro = durationSec !== null && durationSec < MICRO_STOP_SECONDS;
+
+        const effectiveCauseId = isMicro
+            ? NON_CONSIDERED_CAUSE_ID
+            : (dto.causeId ?? DEFAULT_CAUSE_ID);
+
+        await this.assertCauseExists(effectiveCauseId);
 
         const stop = this.stopRepo.create({
+            day: dto.day,
             startTime: dto.startTime,
-            stopTime: dto.stopTime ?? null,
-            causeCode: effectiveCauseCode,
+            stopTime,
+            causeId: effectiveCauseId,
         });
 
         return this.stopRepo.save(stop);
@@ -69,92 +74,97 @@ export class StopsService {
 
     async findAll(query: ListStopsQueryDto) {
         const page = Number(query.page) || 1;
-        const limit = 5; // Strictly limit to 5 per page as requested
+        const limit = Math.min(Number(query.limit) || 5, 100);
 
-        const causeCode = query.causeCode?.trim();
         const from = query.from?.trim();
         const to = query.to?.trim();
         const equipe = query.equipe;
+        const causeId = query.causeId;
 
         if (from && to && from > to) {
             throw new BadRequestException('"from" must be <= "to"');
         }
 
-        const fromDt = from ? startOfDay(from) : undefined;
-        const toDt = to ? endOfDay(to) : undefined;
-
         const qb = this.stopRepo
             .createQueryBuilder('s')
             .leftJoinAndSelect('s.cause', 'c')
-            .orderBy('s.startTime', 'DESC')
+            .orderBy('s.day', 'DESC')
+            .addOrderBy('s.startTime', 'DESC')
             .addOrderBy('s.id', 'DESC')
             .take(limit)
             .skip((page - 1) * limit);
 
-        if (causeCode) qb.andWhere('s.causeCode = :code', { code: causeCode });
+        if (causeId) qb.andWhere('s.causeId = :causeId', { causeId });
         if (equipe) qb.andWhere('s.equipe = :equipe', { equipe });
-        if (fromDt) qb.andWhere('s.startTime >= :from', { from: fromDt });
-        if (toDt) qb.andWhere('s.startTime <= :to', { to: toDt });
+        if (from) qb.andWhere('s.day >= :from', { from });
+        if (to) qb.andWhere('s.day <= :to', { to });
 
         const [stops, total] = await qb.getManyAndCount();
 
-        // Map back to the expected flat structure for the frontend
-        const items = stops.map(s => ({
+        const items = stops.map((s) => ({
             id: s.id,
+            day: s.day,
             startTime: s.startTime,
             stopTime: s.stopTime,
-            causeCode: s.causeCode,
+            durationSeconds: s.durationSeconds,
             equipe: s.equipe,
-            causeName: s.cause?.name || 'Unnamed',
-            causeCategory: s.cause?.category || 'N/A',
+
+            causeId: s.causeId,
+            causeName: s.cause?.name ?? 'Unnamed',
             causeAffectTRS: s.cause?.affectTRS ? 1 : 0,
+            causeIsActive: s.cause?.isActive ? 1 : 0,
         }));
 
         return { items, total, page, limit };
     }
 
     async findOne(id: string) {
-        const stop = await this.stopRepo.findOne({ where: { id } });
+        const stop = await this.stopRepo
+            .createQueryBuilder('s')
+            .leftJoinAndSelect('s.cause', 'c')
+            .where('s.id = :id', { id })
+            .getOne();
+
         if (!stop) throw new NotFoundException(`Stop id=${id} not found`);
         return stop;
     }
 
     async update(id: string, dto: UpdateStopDto) {
-        const stop = await this.findOne(id);
+        const stop = await this.stopRepo.findOne({ where: { id } });
+        if (!stop) throw new NotFoundException(`Stop id=${id} not found`);
 
+        if (dto.day !== undefined) stop.day = dto.day;
         if (dto.startTime !== undefined) stop.startTime = dto.startTime;
         if (dto.stopTime !== undefined) stop.stopTime = dto.stopTime ?? null;
 
-        if (stop.stopTime && stop.stopTime < stop.startTime) {
-            throw new BadRequestException('stopTime must be >= startTime');
-        }
+        // Decide cause logic AFTER applying time updates
+        const durationSec =
+            stop.stopTime !== null ? diffTimeSeconds(stop.startTime, stop.stopTime) : null;
 
-        // ✅ règle micro-arrêt : override automatique
-        if (isMicroStop(stop.startTime, stop.stopTime)) {
-            // cause forcée à "NC"
-            const nc = await this.causeRepo.findOne({ where: { code: NON_CONSIDERED_CAUSE_CODE } });
-            if (!nc) {
-                throw new BadRequestException(
-                    `Missing cause "${NON_CONSIDERED_CAUSE_CODE}". Create it in causes table.`,
-                );
-            }
-            stop.causeCode = NON_CONSIDERED_CAUSE_CODE;
+        const isMicro = durationSec !== null && durationSec < MICRO_STOP_SECONDS;
+
+        if (isMicro) {
+            // Always override
+            stop.causeId = NON_CONSIDERED_CAUSE_ID;
+            await this.assertCauseExists(stop.causeId);
         } else {
-            // si ce n'est pas un micro-arrêt, on applique la cause seulement si elle est fournie
-            if (dto.causeCode !== undefined) {
-                const causeCode = dto.causeCode.trim();
-                const cause = await this.causeRepo.findOne({ where: { code: causeCode } });
-                if (!cause) {
-                    throw new BadRequestException(`Unknown causeCode "${causeCode}"`);
-                }
-                stop.causeCode = causeCode;
+            // Non micro-stop: apply provided causeId if present, otherwise keep existing
+            if (dto.causeId !== undefined) {
+                const cid = dto.causeId || DEFAULT_CAUSE_ID;
+                await this.assertCauseExists(cid);
+                stop.causeId = cid;
+            }
+            // If somehow causeId is invalid/empty, enforce default
+            if (!stop.causeId || stop.causeId <= 0) {
+                stop.causeId = DEFAULT_CAUSE_ID;
+                await this.assertCauseExists(stop.causeId);
             }
         }
 
         return this.stopRepo.save(stop);
     }
 
-    // ✅ downtime par cause pour un jour (ou une période) + filtre equipe
+    // ✅ Downtime per cause (period + equipe filter)
     async getDowntimeAnalytics(
         query: Pick<ListStopsQueryDto, 'from' | 'to' | 'equipe'> = {},
     ) {
@@ -166,48 +176,39 @@ export class StopsService {
             throw new BadRequestException('"from" must be <= "to"');
         }
 
-        const fromDt = from ? startOfDay(from) : undefined;
-        const toDt = to ? endOfDay(to) : undefined;
+        // NOTE: using DB column names with accents => must be backticked in raw SQL
+        const durationValueExpr = `
+      CASE
+        WHEN s.\`Fin\` IS NULL THEN TIMESTAMPDIFF(SECOND, TIMESTAMP(s.\`Jour\`, s.\`Début\`), NOW())
+        ELSE IFNULL(s.\`Durée\`, 0)
+      END
+    `;
 
-        let joinCond = 's.causeCode = c.code';
-        const params: Record<string, any> = {};
-
-        if (equipe) {
-            joinCond += ' AND s.equipe = :equipe';
-            params.equipe = equipe;
-        }
-        if (fromDt) {
-            joinCond += ' AND s.startTime >= :from';
-            params.from = fromDt;
-        }
-        if (toDt) {
-            joinCond += ' AND s.startTime <= :to';
-            params.to = toDt;
-        }
-
-        const qb = this.causeRepo
-            .createQueryBuilder('c')
-            .leftJoin(StopEntity, 's', joinCond, params)
-            .select('c.code', 'causeCode')
+        const qb = this.stopRepo
+            .createQueryBuilder('s')
+            .innerJoin('s.cause', 'c')
+            .select('c.id', 'causeId')
             .addSelect('c.name', 'causeName')
-            .addSelect(
-                'SUM(IFNULL(TIMESTAMPDIFF(SECOND, s.startTime, IFNULL(s.stopTime, NOW())), 0))',
-                'totalDowntimeSeconds',
-            )
-            .groupBy('c.code')
+            .addSelect(`SUM(${durationValueExpr})`, 'totalDowntimeSeconds')
+            .where('1=1')
+            .groupBy('c.id')
             .addGroupBy('c.name')
             .orderBy('totalDowntimeSeconds', 'DESC');
 
-        const results = await qb.getRawMany();
+        if (equipe) qb.andWhere('s.equipe = :equipe', { equipe });
+        if (from) qb.andWhere('s.day >= :from', { from });
+        if (to) qb.andWhere('s.day <= :to', { to });
 
-        return results.map((r) => ({
-            causeCode: r.causeCode,
+        const rows = await qb.getRawMany();
+
+        return rows.map((r) => ({
+            causeId: Number(r.causeId),
             causeName: r.causeName || 'Unnamed',
             totalDowntimeSeconds: Number(r.totalDowntimeSeconds || 0),
         }));
     }
 
-    // ✅ NOUVEAU: résumé par jour
+    // ✅ Daily summary
     async getDailyStopsSummary(
         query: Pick<ListStopsQueryDto, 'from' | 'to' | 'equipe'> = {},
     ) {
@@ -219,26 +220,30 @@ export class StopsService {
             throw new BadRequestException('"from" must be <= "to"');
         }
 
+        const durationValueExpr = `
+      CASE
+        WHEN s.\`Fin\` IS NULL THEN TIMESTAMPDIFF(SECOND, TIMESTAMP(s.\`Jour\`, s.\`Début\`), NOW())
+        ELSE IFNULL(s.\`Durée\`, 0)
+      END
+    `;
+
         const qb = this.stopRepo
             .createQueryBuilder('s')
             .leftJoin('s.cause', 'c')
-            .select('CAST(DATE(s.startTime) AS CHAR)', 'day')
+            .select('s.day', 'day')
             .addSelect('COUNT(*)', 'stopsCount')
+            .addSelect(`SUM(${durationValueExpr})`, 'totalDowntimeSeconds')
             .addSelect(
-                'SUM(TIMESTAMPDIFF(SECOND, s.startTime, IFNULL(s.stopTime, NOW())))',
-                'totalDowntimeSeconds',
-            )
-            .addSelect(
-                'SUM(CASE WHEN c.affect_trs = 1 THEN TIMESTAMPDIFF(SECOND, s.startTime, IFNULL(s.stopTime, NOW())) ELSE 0 END)',
+                `SUM(CASE WHEN c.affect_trs = 1 THEN ${durationValueExpr} ELSE 0 END)`,
                 'trsDowntimeSeconds',
             )
             .where('1=1')
-            .groupBy('CAST(DATE(s.startTime) AS CHAR)')
+            .groupBy('s.day')
             .orderBy('day', 'DESC');
 
         if (equipe) qb.andWhere('s.equipe = :equipe', { equipe });
-        if (from) qb.andWhere('s.startTime >= :from', { from: startOfDay(from) });
-        if (to) qb.andWhere('s.startTime <= :to', { to: endOfDay(to) });
+        if (from) qb.andWhere('s.day >= :from', { from });
+        if (to) qb.andWhere('s.day <= :to', { to });
 
         const rows = await qb.getRawMany<{
             day: string;
@@ -247,10 +252,6 @@ export class StopsService {
             trsDowntimeSeconds: string | number;
         }>();
 
-        // Base “temps max” :
-        // - si equipe est filtrée => 8h
-        // - sinon => 24h (3 équipes * 8h)
-        // Si tu veux FORCER toujours 8h, remplace maxSeconds par SHIFT_SECONDS.
         const maxSeconds = SHIFT_SECONDS * (equipe ? 1 : 3);
 
         return rows.map((r) => {
@@ -258,10 +259,9 @@ export class StopsService {
             const cappedDowntime = Math.max(0, Math.min(downtime, maxSeconds));
             const workSeconds = maxSeconds - cappedDowntime;
 
-            // Normalize day to YYYY-MM-DD
             const dayStr = typeof r.day === 'string'
-                ? r.day.split('T')[0]
-                : new Date(r.day).toISOString().split('T')[0];
+                ? r.day
+                : new Date(r.day).toISOString().slice(0, 10);
 
             return {
                 day: dayStr,

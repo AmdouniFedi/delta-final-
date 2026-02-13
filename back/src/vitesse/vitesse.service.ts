@@ -32,10 +32,15 @@ export class VitesseService {
     async create(dto: CreateVitesseDto) {
         if (dto.speed < 0) throw new BadRequestException('speed must be >= 0');
 
+        const note = dto.note?.trim() || null;
+        if (note && note.length > 40) {
+            throw new BadRequestException('note must be <= 40 characters');
+        }
+
         const entry = this.repo.create({
             recordedAt: dto.recordedAt ?? new Date(),
             speed: dto.speed,
-            note: dto.note?.trim() || null,
+            note,
         });
 
         return this.repo.save(entry);
@@ -78,7 +83,7 @@ export class VitesseService {
         }>();
 
         return rows.map((r) => ({
-            day: r.day, // YYYY-MM-DD
+            day: r.day,
             avgSpeed: Number(r.avgSpeed ?? 0),
             maxSpeed: Number(r.maxSpeed ?? 0),
             samples: Number(r.samples ?? 0),

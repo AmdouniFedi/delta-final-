@@ -16,10 +16,11 @@ export class ListStopsQueryDto {
     limit?: number;
 
     @IsOptional()
-    @IsString()
-    causeCode?: string;
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    causeId?: number;
 
-    // NEW: period filter
     @IsOptional()
     @Type(() => Number)
     @IsInt()

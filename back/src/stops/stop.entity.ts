@@ -3,28 +3,70 @@ import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } 
 import { Cause } from '../causes/cause.entity';
 
 @Entity({ name: 'stops' })
-@Index('idx_stops_start_time', ['startTime'])
+@Index('idx_stops_day_start_time', ['day', 'startTime'])
+@Index('idx_stops_day_equipe_start_time', ['day', 'equipe', 'startTime'])
+@Index('idx_stops_cause_id', ['causeId'])
 @Index('idx_stops_stop_time', ['stopTime'])
-@Index('idx_stops_cause_code', ['causeCode'])
-@Index('idx_stops_equipe', ['equipe']) // optional
+@Index('idx_stops_Durée', ['durationSeconds'])
 export class StopEntity {
     @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
     id!: string;
 
-    @Column({ name: 'start_time', type: 'datetime' })
-    startTime!: Date;
+    // DB column: `Jour` DATE
+    @Column({ name: 'Jour', type: 'date' })
+    day!: string; // 'YYYY-MM-DD'
 
-    @Column({ name: 'stop_time', type: 'datetime', nullable: true })
-    stopTime!: Date | null;
+    // DB column: `Début` TIME
+    @Column({ name: 'Début', type: 'time' })
+    startTime!: string; // 'HH:mm:ss'
 
-    @Column({ name: 'cause_code', type: 'varchar', length: 32 })
-    causeCode!: string;
+    // DB column: `Fin` TIME NULL
+    @Column({ name: 'Fin', type: 'time', nullable: true })
+    stopTime!: string | null; // 'HH:mm:ss' | null
 
-    // NEW:
-    @Column({ name: 'equipe', type: 'tinyint', insert: false, update: false })
+    // DB column: `Durée` GENERATED STORED (seconds)
+    @Column({
+        name: 'Durée',
+        type: 'int',
+        unsigned: true,
+        nullable: true,
+        insert: false,
+        update: false,
+        // Optional: reflect the DB generated expression (helps if you use synchronize/migrations)
+        asExpression: `(
+      CASE
+        WHEN \`Fin\` IS NULL THEN NULL
+        WHEN \`Fin\` >= \`Début\` THEN TIME_TO_SEC(\`Fin\`) - TIME_TO_SEC(\`Début\`)
+        ELSE TIME_TO_SEC(\`Fin\`) + 86400 - TIME_TO_SEC(\`Début\`)
+      END
+    )`,
+        generatedType: 'STORED',
+    })
+    durationSeconds!: number | null;
+
+    // DB column: cause_id INT UNSIGNED NOT NULL (FK)
+    @Column({ name: 'cause_id', type: 'int', unsigned: true })
+    causeId!: number;
+
+    // DB column: equipe GENERATED STORED
+    @Column({
+        name: 'equipe',
+        type: 'tinyint',
+        unsigned: true,
+        insert: false,
+        update: false,
+        asExpression: `(
+      CASE
+        WHEN \`Début\` >= '06:00:00' AND \`Début\` < '14:00:00' THEN 1
+        WHEN \`Début\` >= '14:00:00' AND \`Début\` < '22:00:00' THEN 2
+        ELSE 3
+      END
+    )`,
+        generatedType: 'STORED',
+    })
     equipe!: number;
 
     @ManyToOne(() => Cause, { eager: false })
-    @JoinColumn({ name: 'cause_code', referencedColumnName: 'code' })
+    @JoinColumn({ name: 'cause_id', referencedColumnName: 'id' })
     cause?: Cause;
 }

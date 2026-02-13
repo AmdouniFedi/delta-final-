@@ -212,7 +212,7 @@ export default function CausesClient() {
                             data={data?.items || []}
                             fileName="causes_export"
                             sheetName="Causes"
-                            label="Excel"
+                            label="Exporter excel"
                         />
 
                         <div className="text-slate-500 font-medium whitespace-nowrap px-2 text-xs">

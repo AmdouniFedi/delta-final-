@@ -14,13 +14,11 @@ export class StopsController {
         return this.stopsService.findAll(query);
     }
 
-    // ✅ downtime par cause (existant)
     @Get('analytics/downtime')
     getDowntimeAnalytics(@Query() query: ListStopsQueryDto) {
         return this.stopsService.getDowntimeAnalytics(query);
     }
 
-    // ✅ NOUVEAU: tableau arrêts par jour
     @Get('analytics/daily')
     getDailyStops(@Query() query: ListStopsQueryDto) {
         return this.stopsService.getDailyStopsSummary(query);

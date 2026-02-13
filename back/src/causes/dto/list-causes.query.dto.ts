@@ -19,10 +19,6 @@ export class ListCausesQueryDto {
     search?: string;
 
     @IsOptional()
-    @IsString()
-    category?: string;
-
-    @IsOptional()
     @Transform(({ value }) => toBool(value))
     @IsBoolean()
     isActive?: boolean;

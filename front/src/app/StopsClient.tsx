@@ -54,7 +54,7 @@ function calculateAvailableTime(day: string, equipe?: string): number {
     const DAY_HOURS = 24;
 
     // Limits
-    const refSeconds = (equipe && equipe !== 'all') ? SHIFT_HOURS * 3600 : DAY_HOURS * 3600;
+    const refSeconds = SHIFT_HOURS * 3600;
 
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
@@ -195,7 +195,7 @@ export default function StopsClient() {
     // Filters
     const [fromDate, setFromDate] = useState('');
     const [toDate, setToDate] = useState('');
-    const [equipe, setEquipe] = useState<'all' | '1' | '2' | '3'>('all');
+    const [equipe, setEquipe] = useState<'1' | '2' | '3'>('1');
     const [search, setSearch] = useState('');
 
     // Pagination State
@@ -210,7 +210,7 @@ export default function StopsClient() {
         const params = new URLSearchParams();
         if (fromDate) params.set('from', fromDate);
         if (toDate) params.set('to', toDate);
-        if (equipe !== 'all') params.set('equipe', equipe);
+        params.set('equipe', equipe);
         const qs = params.toString();
         return qs ? `?${qs}` : '';
     }, [fromDate, toDate, equipe]);
@@ -250,7 +250,7 @@ export default function StopsClient() {
         params.set('limit', DETAILS_LIMIT.toString());
         params.set('from', selectedDay);
         params.set('to', selectedDay);
-        if (equipe !== 'all') params.set('equipe', equipe);
+        params.set('equipe', equipe);
         if (search.trim()) params.set('causeCode', search.trim());
         return params.toString();
     }, [selectedDay, equipe, search, detailsPage]);
@@ -260,7 +260,7 @@ export default function StopsClient() {
         const params = new URLSearchParams();
         params.set('from', selectedDay);
         params.set('to', selectedDay);
-        if (equipe !== 'all') params.set('equipe', equipe);
+        params.set('equipe', equipe);
         const qs = params.toString();
         return qs ? `?${qs}` : '';
     }, [selectedDay, equipe]);
@@ -349,7 +349,6 @@ export default function StopsClient() {
                             onChange={(e) => setEquipe(e.target.value as any)}
                             className="bg-slate-800/50 border border-slate-700/50 text-white px-4 py-2.5 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none min-w-[120px]"
                         >
-                            <option value="all">Toutes équipes</option>
                             <option value="1">Equipe 1</option>
                             <option value="2">Equipe 2</option>
                             <option value="3">Equipe 3</option>
@@ -389,7 +388,7 @@ export default function StopsClient() {
                             data={dailyRows}
                             fileName="resume_arrets_jour"
                             sheetName="Resume"
-                            label="Export"
+                            label="Exporter excel"
                         />
                     </div>
 
@@ -400,8 +399,7 @@ export default function StopsClient() {
                                     <th className="px-4 py-3">Date</th>
                                     <th className="px-4 py-3">Total Arrêt</th>
                                     <th className="px-4 py-3">Total Travail</th>
-                                    {/* TRS Column: Only show if NOT all */}
-                                    {equipe !== 'all' && <th className="px-4 py-3">TRS</th>}
+                                    <th className="px-4 py-3">TRS</th>
                                     <th className="px-4 py-3 text-right">Nb Arrêts</th>
                                 </tr>
                             </thead>
@@ -425,18 +423,16 @@ export default function StopsClient() {
                                             <td className="px-4 py-3 text-slate-300 font-mono">{formatHMS(r.totalDowntimeSeconds)}</td>
                                             <td className="px-4 py-3 text-slate-300 font-mono">{formatHMS(r.totalWorkSeconds)}</td>
 
-                                            {equipe !== 'all' && (
-                                                <td className="px-4 py-3">
-                                                    {(() => {
-                                                        const refSeconds = 8 * 3600;
-                                                        const avail = calculateAvailableTime(r.day, equipe);
-                                                        const down = Number(r.trsDowntimeSeconds || 0);
-                                                        const val = avail > 0 ? ((avail - down) / refSeconds) * 100 : 0;
-                                                        const color = val >= 85 ? 'text-emerald-400' : val >= 50 ? 'text-amber-400' : 'text-red-400';
-                                                        return <span className={`font-bold ${color}`}>{val.toFixed(2)}%</span>;
-                                                    })()}
-                                                </td>
-                                            )}
+                                            <td className="px-4 py-3">
+                                                {(() => {
+                                                    const refSeconds = 8 * 3600;
+                                                    const avail = calculateAvailableTime(r.day, equipe);
+                                                    const down = Number(r.trsDowntimeSeconds || 0);
+                                                    const val = avail > 0 ? ((avail - down) / refSeconds) * 100 : 0;
+                                                    const color = val >= 85 ? 'text-emerald-400' : val >= 50 ? 'text-amber-400' : 'text-red-400';
+                                                    return <span className={`font-bold ${color}`}>{val.toFixed(2)}%</span>;
+                                                })()}
+                                            </td>
 
                                             <td className="px-4 py-3 text-right font-semibold text-slate-200">{r.stopsCount}</td>
                                         </tr>
@@ -504,7 +500,7 @@ export default function StopsClient() {
                                         data={stopsData?.items || []}
                                         fileName={`arrets_${selectedDay}`}
                                         sheetName="Details"
-                                        label="Export"
+                                        label="Exporter excel"
                                     />
                                 </div>
                             </div>
@@ -516,7 +512,7 @@ export default function StopsClient() {
                                             <th className="px-4 py-3">Heure</th>
                                             <th className="px-4 py-3">Durée</th>
                                             <th className="px-4 py-3">Cause</th>
-                                            {equipe !== 'all' && <th className="px-4 py-3 text-right">Impact TRS</th>}
+                                            <th className="px-4 py-3 text-right">Impact TRS</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-700/30 text-xs">
@@ -550,13 +546,11 @@ export default function StopsClient() {
                                                             {stop.causeName || 'Non assigné'}
                                                         </div>
                                                     </td>
-                                                    {equipe !== 'all' && (
-                                                        <td className="px-4 py-2 text-right">
-                                                            {durationSeconds !== null && stop.causeAffectTRS === 1 ? (
-                                                                <span className="text-red-400 font-medium">1</span>
-                                                            ) : <span className="text-slate-600">0</span>}
-                                                        </td>
-                                                    )}
+                                                    <td className="px-4 py-2 text-right">
+                                                        {durationSeconds !== null && stop.causeAffectTRS === 1 ? (
+                                                            <span className="text-red-400 font-medium">1</span>
+                                                        ) : <span className="text-slate-600">0</span>}
+                                                    </td>
                                                 </tr>
                                             );
                                         })}

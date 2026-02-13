@@ -1,36 +1,30 @@
-
+require('dotenv').config();
 const mysql = require('mysql2/promise');
 
 async function main() {
     const conn = await mysql.createConnection({
-        host: 'localhost',
-        port: 3306,
-        user: 'root',
-        password: 'isetiset2023',
-        database: 'Dashboardv2'
+        host: process.env.DB_HOST,
+        port: Number(process.env.DB_PORT) || 3306,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME
     });
 
     console.log('Connected to DB');
 
-    const [rows] = await conn.execute(`
-        SELECT id, start_time, stop_time
-        FROM stops
-        ORDER BY start_time DESC
-        LIMIT 10
-    `);
+    const [rows] = await conn.execute(
+        "SELECT id, `Jour` AS day, `Début` AS startTime, `Fin` AS stopTime, `Durée` AS durationSec, cause_id " +
+        "FROM stops ORDER BY `Jour` DESC, `Début` DESC LIMIT 10"
+    );
 
     console.log('Latest 10 stops:');
     rows.forEach(r => {
-        console.log(`ID: ${r.id}, Start: ${r.start_time}, Stop: ${r.stop_time}`);
+        console.log(`ID: ${r.id}, Day: ${r.day}, Start: ${r.startTime}, Stop: ${r.stopTime}, Durée: ${r.durationSec}`);
     });
 
-    // Also check group by query from the service to see what it produces
-    const [summaryRows] = await conn.execute(`
-        SELECT DATE(start_time) as day, COUNT(*) as cnt 
-        FROM stops 
-        GROUP BY DATE(start_time) 
-        ORDER BY day DESC
-    `);
+    const [summaryRows] = await conn.execute(
+        "SELECT `Jour` AS day, COUNT(*) AS cnt FROM stops GROUP BY `Jour` ORDER BY day DESC"
+    );
     console.log('Summary Group By Results:', summaryRows);
 
     await conn.end();

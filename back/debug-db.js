@@ -1,51 +1,41 @@
-
+require('dotenv').config();
 const mysql = require('mysql2/promise');
 
 async function main() {
     const conn = await mysql.createConnection({
-        host: 'localhost',
-        port: 3306,
-        user: 'root',
-        password: 'isetiset2023',
-        database: 'Dashboardv2'
+        host: process.env.DB_HOST,
+        port: Number(process.env.DB_PORT) || 3306,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME
     });
 
     console.log('Connected to DB');
 
-    // 1. Check raw count for the day using DATE()
-    // Need to use snake_case column names
-    const [rows] = await conn.execute(`
-        SELECT id, start_time, stop_time, cause_code, equipe
-        FROM stops
-        WHERE DATE(start_time) = '2026-01-23'
-    `);
+    const day = '2026-02-13';
 
-    console.log(`Found ${rows.length} stops via DATE(start_time) = '2026-01-23'`);
-    if (rows.length > 0) {
-        console.log('Sample row:', rows[0]);
-    }
+    // 1) Stops for a given day (new schema: Jour + Début/Fin)
+    const [rows] = await conn.execute(
+        "SELECT id, `Jour` AS day, `Début` AS startTime, `Fin` AS stopTime, `Durée` AS durationSec, cause_id, equipe " +
+        "FROM stops WHERE `Jour` = ? ORDER BY `Début` ASC",
+        [day]
+    );
 
-    // 2. Check range query used by findAll
-    const start = '2026-01-23 00:00:00';
-    const end = '2026-01-23 23:59:59';
-    const [rangeRows] = await conn.execute(`
-        SELECT id, start_time 
-        FROM stops 
-        WHERE start_time >= ? AND start_time <= ?
-    `, [start, end]);
+    console.log(`Found ${rows.length} stops where Jour='${day}'`);
+    if (rows.length > 0) console.log('Sample row:', rows[0]);
 
-    console.log(`Found ${rangeRows.length} stops via range ${start} to ${end}`);
+    // 2) Equivalent "range" by day
+    const [rangeRows] = await conn.execute(
+        "SELECT id FROM stops WHERE `Jour` >= ? AND `Jour` <= ?",
+        [day, day]
+    );
+    console.log(`Found ${rangeRows.length} stops via Jour range ${day}..${day}`);
 
-    // 3. Diagnostic output
-    if (rangeRows.length === 0 && rows.length > 0) {
-        console.log('Mismatch detected! Raw start_times from DATE() query:');
-        rows.forEach(r => console.log(r.start_time));
-
-        console.log('Checking if they are shifted?');
-        // Check timezone?
-        const [timeRows] = await conn.execute("SELECT NOW(), @@global.time_zone, @@session.time_zone");
-        console.log('DB Timezone info:', timeRows[0]);
-    }
+    // 3) Diagnostic timezone info (optional)
+    const [timeRows] = await conn.execute(
+        "SELECT NOW() AS now, @@global.time_zone AS global_tz, @@session.time_zone AS session_tz"
+    );
+    console.log('DB Timezone info:', timeRows[0]);
 
     await conn.end();
 }

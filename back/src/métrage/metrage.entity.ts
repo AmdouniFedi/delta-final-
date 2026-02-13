@@ -7,9 +7,10 @@ const decimalToNumber = {
 
 @Entity({ name: 'metrage_entries' })
 @Index('idx_metrage_recorded_at', ['recordedAt'])
+@Index('idx_metrage_recorded_at_id', ['recordedAt', 'id'])
 export class MetrageEntry {
     @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
-    id!: string;
+    id!: string; // BIGINT => string côté Node (safe)
 
     @Column({ name: 'recorded_at', type: 'datetime' })
     recordedAt!: Date;
@@ -23,6 +24,7 @@ export class MetrageEntry {
     })
     meters!: number;
 
-    @Column({ name: 'note', type: 'varchar', length: 255, nullable: true })
+    // ✅ new schema: VARCHAR(40)
+    @Column({ name: 'note', type: 'varchar', length: 40, nullable: true })
     note!: string | null;
 }
